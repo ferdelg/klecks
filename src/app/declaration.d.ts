@@ -30,3 +30,6 @@ declare module '*.woff2' {
     const path: string;
     export default path;
 }
+
+// Parcel resolves require() at build time. Used by the Flinsh single-file build (KL_FLINSH=1).
+declare function require(path: string): unknown;

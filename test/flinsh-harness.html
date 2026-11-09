@@ -1,0 +1,175 @@
+<!doctype html>
+<!--
+    Local stand-in for the Flinsh host. Serve the repo root and open /test/flinsh-harness.html
+        python3 -m http.server 8123   ->   http://localhost:8123/test/flinsh-harness.html
+
+    It loads dist-flinsh/index.html into <iframe sandbox="allow-scripts"> with the Flinsh CSP,
+    injects a window.flinsh bridge (late, to exercise the guard), and backs flinsh.store
+    (user scope) with this page's localStorage. Query params:
+        ?bridge=0       no bridge (app must start standalone after 400 ms)
+        ?delay=150      bridge injection delay in ms
+        ?phone=1        390x844 frame
+        ?probe=1        also run sandbox capability probes (download, clipboard, IDB, ...)
+-->
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Flinsh harness</title>
+        <style>
+            body { margin: 0; font: 13px system-ui, sans-serif; display: flex; height: 100vh; }
+            #frameWrap { flex: 1; display: flex; align-items: center; justify-content: center; background: #222; }
+            iframe { border: 0; background: #fff; width: 100%; height: 100%; }
+            .phone iframe { width: 390px; height: 844px; }
+            #side { width: 340px; overflow: auto; padding: 8px; box-sizing: border-box; border-left: 1px solid #ccc; }
+            pre { white-space: pre-wrap; word-break: break-all; font-size: 11px; background: #f4f4f4; padding: 6px; }
+            h3 { margin: 10px 0 4px; font-size: 13px; }
+        </style>
+    </head>
+    <body>
+        <div id="frameWrap"><iframe id="app" sandbox="allow-scripts" title="app"></iframe></div>
+        <div id="side">
+            <button id="clear">Clear store</button>
+            <button id="reload">Reload app</button>
+            <h3>Status</h3>
+            <pre id="status"></pre>
+            <h3>Store (user scope)</h3>
+            <pre id="store"></pre>
+            <h3>Log</h3>
+            <pre id="log"></pre>
+        </div>
+        <script>
+            const params = new URLSearchParams(location.search);
+            const WITH_BRIDGE = params.get('bridge') !== '0';
+            const DELAY = +(params.get('delay') ?? 150);
+            const PROBE = params.get('probe') === '1';
+            if (params.get('phone') === '1') document.body.classList.add('phone');
+
+            const CSP =
+                "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; " +
+                "img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; " +
+                "form-action 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'";
+            const MAX_VALUE = 256 * 1024;
+            const LS_KEY = 'flinsh-harness-store';
+
+            const state = { setCalls: 0, getCalls: 0, ready: false, readyAt: null, probes: {} };
+            const t0 = performance.now();
+            const loadStore = () => JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+            const saveStore = (s) => localStorage.setItem(LS_KEY, JSON.stringify(s));
+            const log = (msg) => {
+                const el = document.getElementById('log');
+                el.textContent = `[${Math.round(performance.now() - t0)}ms] ${msg}\n` + el.textContent;
+                console.log('[harness] ' + msg);
+            };
+            const render = () => {
+                document.getElementById('status').textContent = JSON.stringify(state, null, 1);
+                document.getElementById('store').textContent = JSON.stringify(loadStore(), null, 1);
+            };
+            window.harness = { state, loadStore, log }; // for automation
+
+            // ---- bridge shim, runs inside the sandboxed frame ----
+            const shim = (withBridge, delay, probe) => {
+                let nextId = 1;
+                const pending = new Map();
+                window.addEventListener('message', (e) => {
+                    const m = e.data;
+                    if (m && m.__flinsh && pending.has(m.id)) {
+                        const { resolve, reject } = pending.get(m.id);
+                        pending.delete(m.id);
+                        m.error ? reject(new Error(m.error)) : resolve(m.result);
+                    }
+                });
+                const call = (method, args) =>
+                    new Promise((resolve, reject) => {
+                        const id = nextId++;
+                        pending.set(id, { resolve, reject });
+                        parent.postMessage({ __flinsh: true, id, method, args }, '*');
+                    });
+                const post = (method, args) => parent.postMessage({ __flinsh: true, method, args }, '*');
+                if (withBridge) {
+                    setTimeout(() => {
+                        window.flinsh = {
+                            input: {},
+                            ready: () => post('ready'),
+                            done: (r) => post('done', [r]),
+                            resize: (h) => post('resize', [h]),
+                            store: {
+                                get: (k) => call('get', [k]),
+                                set: (k, v) => call('set', [k, v]),
+                                delete: (k) => call('delete', [k]),
+                                list: (p) => call('list', [p]),
+                            },
+                        };
+                        window.dispatchEvent(new Event('flinsh:ready'));
+                    }, delay);
+                }
+                window.addEventListener('error', (e) => post('error', [String(e.message)]));
+                window.addEventListener('unhandledrejection', (e) => post('error', ['unhandledrejection: ' + (e.reason && e.reason.message || e.reason)]));
+                document.addEventListener('securitypolicyviolation', (e) =>
+                    post('csp', [e.violatedDirective + ' ' + e.blockedURI]),
+                );
+                if (probe) {
+                    window.addEventListener('load', async () => {
+                        const r = {};
+                        try { localStorage.getItem('x'); r.localStorage = 'ok'; } catch (e) { r.localStorage = e.name; }
+                        try {
+                            await new Promise((res, rej) => { const q = indexedDB.open('probe'); q.onsuccess = res; q.onerror = () => rej(q.error); });
+                            r.indexedDB = 'ok';
+                        } catch (e) { r.indexedDB = (e && e.name) || String(e); }
+                        try { r.windowOpen = window.open('about:blank') ? 'opened' : 'null (blocked)'; } catch (e) { r.windowOpen = e.name; }
+                        try { await navigator.clipboard.writeText('x'); r.clipboardWrite = 'ok'; } catch (e) { r.clipboardWrite = e.name + ': ' + e.message; }
+                        try { r.canShareFiles = !!(navigator.canShare && navigator.canShare({ files: [new File(['x'], 'x.png', { type: 'image/png' })] })); } catch (e) { r.canShareFiles = e.name; }
+                        r.showSaveFilePicker = 'showSaveFilePicker' in window;
+                        r.origin = window.origin;
+                        // download exactly like Kleki's saveAs(): <a download> + blob URL
+                        const name = 'flinsh-download-probe-' + Date.now() + '.png';
+                        const c = document.createElement('canvas'); c.width = c.height = 8;
+                        const blob = await new Promise((res) => c.toBlob(res, 'image/png'));
+                        const a = document.createElement('a');
+                        a.download = name; a.href = URL.createObjectURL(blob);
+                        document.body.append(a); a.click(); a.remove();
+                        r.downloadProbeFile = name;
+                        post('probe', [r]);
+                    });
+                }
+            };
+
+            window.addEventListener('message', (e) => {
+                const m = e.data;
+                if (!m || !m.__flinsh || e.source !== document.getElementById('app').contentWindow) return;
+                const reply = (result, error) => e.source.postMessage({ __flinsh: true, id: m.id, result, error }, '*');
+                const s = loadStore();
+                const [a, b] = m.args || [];
+                switch (m.method) {
+                    case 'get': state.getCalls++; log(`store.get(${a})`); reply(a in s ? s[a] : null); break;
+                    case 'set': {
+                        state.setCalls++;
+                        const json = JSON.stringify(b);
+                        if (json.length > MAX_VALUE) { log(`store.set(${a}) REJECTED ${json.length} B`); reply(undefined, 'value too big'); break; }
+                        s[a] = b; saveStore(s); log(`store.set(${a}) ${json.length} B`); reply(true); break;
+                    }
+                    case 'delete': { const had = a in s; delete s[a]; saveStore(s); reply(had); break; }
+                    case 'list': reply(Object.keys(s).filter((k) => k.startsWith(a || '')).sort()); break;
+                    case 'ready': state.ready = true; state.readyAt = Math.round(performance.now() - t0); log('flinsh.ready()'); break;
+                    case 'error': log('APP ERROR: ' + a); (state.errors ??= []).push(a); break;
+                    case 'csp': log('CSP violation: ' + a); (state.csp ??= []).push(a); break;
+                    case 'probe': state.probes = a; log('probe: ' + JSON.stringify(a)); break;
+                    default: log('bridge ' + m.method + ' ' + JSON.stringify(m.args));
+                }
+                render();
+            });
+
+            async function loadApp() {
+                const html = await (await fetch('../dist-flinsh/index.html', { cache: 'no-store' })).text();
+                const head =
+                    `<meta http-equiv="Content-Security-Policy" content="${CSP}">` +
+                    `<script>(${shim.toString()})(${WITH_BRIDGE}, ${DELAY}, ${PROBE});<\/script>`;
+                document.getElementById('app').srcdoc = html.replace(/<html[^>]*>/i, (m) => m + head) // Parcel's minified HTML has no <head> tag;
+                log(`loaded app (${(html.length / 1024).toFixed(0)} KB), bridge=${WITH_BRIDGE} delay=${DELAY}`);
+            }
+            document.getElementById('clear').onclick = () => { localStorage.removeItem(LS_KEY); render(); };
+            document.getElementById('reload').onclick = () => { state.ready = false; loadApp(); };
+            render();
+            loadApp();
+        </script>
+    </body>
+</html>

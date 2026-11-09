@@ -21,9 +21,9 @@ export class ToolspaceTopRow {
         onLogo: () => void;
         onNew: () => void;
         onImport: () => void;
-        onSave: () => void;
-        onShare: () => void;
-        onHelp: () => void;
+        onSave?: () => void; // omitted -> no button (e.g. downloads blocked inside Flinsh)
+        onShare?: () => void;
+        onHelp?: () => void;
     }) {
         this.rootEl = BB.el({
             className: 'kl-toolspace-row',
@@ -110,7 +110,7 @@ export class ToolspaceTopRow {
             extraPadding: 1,
             contain: true,
         });
-        const saveButton = createButton({
+        const saveButton = p.onSave && createButton({
             onClick: p.onSave,
             title: LANG('file-save'),
             image: exportImg,
@@ -119,7 +119,7 @@ export class ToolspaceTopRow {
         });
 
         let shareButton = null;
-        if (BB.canShareFiles()) {
+        if (p.onShare && BB.canShareFiles()) {
             shareButton = createButton({
                 onClick: p.onShare,
                 title: LANG('file-share'),
@@ -128,8 +128,9 @@ export class ToolspaceTopRow {
                 darkInvert: true,
             });
         }
-        const helpButton = createButton({
-            onClick: p.onHelp,
+        const onHelp = p.onHelp;
+        const helpButton = onHelp && createButton({
+            onClick: onHelp,
             title: LANG('help'),
             content: getIconSvg('help', {
                 width: 24,
@@ -138,15 +139,17 @@ export class ToolspaceTopRow {
             }),
             contain: true,
         });
-        helpButton.el.style.flexBasis = '0';
+        if (helpButton) {
+            helpButton.el.style.flexBasis = '0';
+        }
 
         BB.append(this.rootEl, [
             logoButton.el,
             newButton.el,
             importButton.el,
-            saveButton.el,
+            saveButton ? saveButton.el : undefined,
             shareButton ? shareButton.el : undefined,
-            helpButton.el,
+            helpButton ? helpButton.el : undefined,
         ]);
     }
 

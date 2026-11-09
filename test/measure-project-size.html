@@ -1,0 +1,54 @@
+<!doctype html>
+<!-- Measures the size of a Kleki "browser storage" project (per-layer PNG + 240px PNG thumbnail
+     + metadata) for typical and extreme content. Serve repo root, open, read window.result. -->
+<meta charset="utf-8"><title>project size</title><pre id="out">measuring…</pre>
+<script>
+const toBlob = (c) => new Promise((r) => c.toBlob(r, 'image/png'));
+function rng(seed) { return () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32); }
+function layer(w, h, kind, seed = 1) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d'); const r = rng(seed);
+  if (kind === 'white') { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); }
+  if (kind === 'sketch' || kind === 'painting') {
+    const n = kind === 'sketch' ? 40 : 600;
+    for (let i = 0; i < n; i++) {
+      ctx.strokeStyle = kind === 'sketch' ? '#000' : `hsla(${r() * 360},70%,50%,${0.3 + r() * 0.7})`;
+      ctx.lineWidth = kind === 'sketch' ? 2 + r() * 4 : 5 + r() * 80; ctx.lineCap = 'round';
+      ctx.beginPath(); let x = r() * w, y = r() * h; ctx.moveTo(x, y);
+      for (let k = 0; k < 12; k++) { x += (r() - 0.5) * w * 0.2; y += (r() - 0.5) * h * 0.2; ctx.lineTo(x, y); }
+      ctx.stroke();
+    }
+    if (kind === 'painting') { ctx.filter = 'blur(2px)'; ctx.drawImage(c, 0, 0); ctx.filter = 'none'; }
+  }
+  if (kind === 'noise') {
+    const d = ctx.createImageData(w, h); for (let i = 0; i < d.data.length; i++) d.data[i] = (r() * 256) | 0; ctx.putImageData(d, 0, 0);
+  }
+  return c;
+}
+function thumb(src) { const s = Math.min(240 / src.width, 240 / src.height); const c = document.createElement('canvas');
+  c.width = Math.round(src.width * s); c.height = Math.round(src.height * s); c.getContext('2d').drawImage(src, 0, 0, c.width, c.height); return c; }
+async function project(w, h, kinds) {
+  let bytes = 0; const layers = [];
+  for (let i = 0; i < kinds.length; i++) { const c = layer(w, h, kinds[i], i + 1); const b = await toBlob(c); bytes += b.size; layers.push(c); }
+  bytes += (await toBlob(thumb(layers[layers.length - 1]))).size;
+  bytes += 200 + kinds.length * 120; // JSON metadata
+  return bytes;
+}
+(async () => {
+  const cases = [
+    ['phone default 390x664, blank (white bg)', 390, 664, ['white']],
+    ['phone 390x664, sketch on white', 390, 664, ['white', 'sketch']],
+    ['laptop 1440x900, white + sketch', 1440, 900, ['white', 'sketch']],
+    ['2048x2048, white + sketch', 2048, 2048, ['white', 'sketch']],
+    ['2048x2048, white + painting + sketch', 2048, 2048, ['white', 'painting', 'sketch']],
+    ['2048x2048, 4 painted layers', 2048, 2048, ['white', 'painting', 'painting', 'sketch']],
+    ['4096x4096, white + painting + sketch', 4096, 4096, ['white', 'painting', 'sketch']],
+    ['2048x2048, 1 noise layer (incompressible)', 2048, 2048, ['noise']],
+    ['4096x4096, 1 noise layer (incompressible)', 4096, 4096, ['noise']],
+  ];
+  const result = [];
+  for (const [name, w, h, kinds] of cases) { const b = await project(w, h, kinds); result.push({ name, kb: Math.round(b / 1024) }); }
+  window.result = result;
+  document.getElementById('out').textContent = result.map((r) => `${String(r.kb).padStart(8)} KB  ${r.name}`).join('\n');
+})();
+</script>

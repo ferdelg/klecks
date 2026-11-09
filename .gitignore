@@ -4,3 +4,4 @@ dist
 .idea
 src/app/languages
 src/app/icons
+.flinsh-build

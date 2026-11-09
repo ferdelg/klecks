@@ -12,6 +12,7 @@ import { showRecoveryManagerPanel } from '../modals/recovery-manager-panel/show-
 import * as classes from './file-ui.module.scss';
 import { BrowserStorageHeaderUi } from '../components/browser-storage-header-ui';
 import { css } from '../../../bb/base/base';
+import { FLINSH_FEATURES, FLINSH_STORAGE_COMING_SOON, isRestrictedFrame } from '../../../flinsh/flinsh';
 
 const newImageImg = getIconUrl('new-image');
 const exportImg = getIconUrl('export');
@@ -204,6 +205,15 @@ export class FileUi {
                 css(this.browserStorageUi.getElement(), {
                     margin: 10,
                 });
+            } else if (isRestrictedFrame()) {
+                // Inside Flinsh there is no IndexedDB. Don't show an error, say what's coming.
+                browserStorageFallbackEl = BB.el({
+                    className: 'kl-toolspace-note',
+                    content: FLINSH_STORAGE_COMING_SOON,
+                    css: {
+                        margin: '10px 10px 0 10px',
+                    },
+                });
             } else {
                 const header = new BrowserStorageHeaderUi(p.helpPath);
                 browserStorageFallbackEl = BB.el({
@@ -312,14 +322,16 @@ export class FileUi {
                 newButton,
                 importButton,
                 BB.el({ css: { clear: 'both' } }),
-                saveRow,
+                // downloads are blocked inside Flinsh (sandbox without allow-downloads)
+                FLINSH_FEATURES.canDownload ? saveRow : undefined,
                 createSpacer(),
                 this.browserStorageUi?.getElement(),
                 browserStorageFallbackEl,
                 createSpacer(),
-                recoveryWrapper,
-                uploadImgurButton,
-                BB.canShareFiles() ? shareButton : undefined,
+                // tab recovery lives in IndexedDB
+                this.klRecoveryManager || !isRestrictedFrame() ? recoveryWrapper : undefined,
+                FLINSH_FEATURES.canUploadImgur ? uploadImgurButton : undefined,
+                FLINSH_FEATURES.canShare && BB.canShareFiles() ? shareButton : undefined,
                 BB.el({ css: { clear: 'both' } }),
             ]);
         };

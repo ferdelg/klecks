@@ -8,6 +8,7 @@
     "start": "parcel serve src/index.html --no-cache",
     "build": "parcel build src/index.html src/help.html --public-url .",
     "build:embed": "parcel build src/embed.ts src/help.html --public-url .",
+    "build:flinsh": "node scripts/build-flinsh.mjs",
     "lang:add": "node src/languages/generate.js add",
     "lang:sync": "node src/languages/generate.js sync",
     "lang:build": "node src/languages/generate.js build",
@@ -26,6 +27,8 @@
     "transformation-matrix": "3.1.0"
   },
   "devDependencies": {
+    "@parcel/optimizer-data-url": "2.16.4",
+    "@parcel/transformer-inline-string": "2.16.4",
     "csstype": "^3.2.3"
   }
 }

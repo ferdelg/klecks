@@ -128,3 +128,15 @@ the embed-version.
 
 bitbof © 2026 - Released under the MIT License. Icons by bitbof are public domain (excluding the Klecks logo, bitbof logo).
 While Kleki and Klecks are jointly developed, Kleki's license is separate from Klecks. Kleki at [kleki.com](https://kleki.com) is free to use, but the name and brand "Kleki" are not covered by this license — you may not use Klecks to offer a service branded or presented as "Kleki" without a license from bitbof.
+
+# Flinsh build
+`npm run build:flinsh` builds `dist-flinsh/index.html`: the whole app in one self-contained file
+(JS, CSS, fonts, images inlined; no lazy chunks, no service worker, no network) for the
+[Flinsh](flinsh.json) sandbox. See `scripts/build-flinsh.mjs` and `src/app/script/flinsh/`.
+
+- Settings (UI prefs, theme, language, brush size/opacity, selected brush) are stored in
+  `flinsh.store` under `kleki/settings` when the bridge is present, otherwise in localStorage.
+- Inside Flinsh, features the sandbox blocks are hidden: save/download, Imgur upload, share,
+  help/home pages, browser storage and tab recovery (IndexedDB).
+- Test locally: `python3 -m http.server 8123` in the repo root, open
+  `http://localhost:8123/test/flinsh-harness.html` (`?bridge=0`, `?phone=1`, `?probe=1`).

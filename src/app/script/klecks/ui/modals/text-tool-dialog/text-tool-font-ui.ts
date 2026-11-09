@@ -50,10 +50,15 @@ async function loadBundledFonts(): Promise<void> {
     }
     didLoadBundledFonts = true;
     const promises = FONTS.map(async (item) => {
-        const response = await fetch(item.url);
-        const buffer = await response.arrayBuffer();
-        const font = new FontFace(item.name, buffer);
-        // await font.load();
+        // Load via a CSS url() source rather than fetch(): it goes through font-src,
+        // so it also works under a strict CSP (connect-src 'none') with data: URLs.
+        const font = new FontFace(item.name, `url(${JSON.stringify(item.url)})`);
+        try {
+            await font.load();
+        } catch (e) {
+            console.warn('failed to load font', item.name, e);
+            return;
+        }
         document.fonts.add(font);
     });
 

@@ -91,7 +91,9 @@ export function buildLanguages(baseEn, translations, showMissing) {
         name: '${lang.name}',
     }`);
         loadLanguage += `    } else if (code === '${item.code}') {
-        return await import('./${item.code}.json');
+        return process.env.KL_FLINSH === '1'
+            ? require('./${item.code}.json') // Flinsh build: one bundle, no lazy chunks
+            : await import('./${item.code}.json');
 `;
     });
 

@@ -1,0 +1,55 @@
+<!doctype html>
+<!-- Flinsh single-file build entry. Built by scripts/build-flinsh.mjs into dist-flinsh/index.html -->
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Kleki</title>
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+        />
+        <meta name="color-scheme" content="dark light" />
+        <script>
+            // reduce flickering. localStorage throws inside the Flinsh sandbox -> fall back to OS theme.
+            // The stored theme (from Flinsh) is applied once settings are loaded.
+            (function () {
+                var theme = null;
+                try {
+                    theme = localStorage.getItem('klecks-theme');
+                } catch (e) {}
+                if (!theme) {
+                    theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                }
+                if (theme === 'dark') {
+                    document.documentElement.classList.add('kl-theme-dark');
+                }
+            })();
+        </script>
+        <style>
+            :root {
+                font-family: system-ui, sans-serif;
+                background: #999;
+            }
+            html,
+            body {
+                height: 100%;
+            }
+            body {
+                margin: 0;
+                overflow: hidden;
+            }
+            #loading-screen {
+                color: #eee;
+                margin-top: 100px;
+                text-align: center;
+                width: 100vw;
+                font-size: 25px;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="loading-screen">Loading Kleki</div>
+        <link rel="stylesheet" href="app/style/style.scss" />
+        <script type="module" src="app/script/main-flinsh.ts"></script>
+    </body>
+</html>

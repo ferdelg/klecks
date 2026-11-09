@@ -1,0 +1,8 @@
+{
+  "flinsh": "2",
+  "name": "Kleki",
+  "description": "A full painting app with layers, brushes and filters. Draw anywhere; your settings follow you.",
+  "type": "app",
+  "entrypoint": "dist-flinsh/index.html",
+  "permissions": ["store:user"]
+}

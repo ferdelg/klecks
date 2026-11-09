@@ -66,6 +66,8 @@ import { ERASE_COLOR } from '../klecks/brushes/erase-color';
 import { KlRecoveryManager } from '../klecks/storage/kl-recovery-manager';
 import { UnloadWarningTrigger } from '../klecks/ui/components/unload-warning-trigger';
 import { KL_INDEXED_DB } from '../klecks/storage/kl-indexed-db';
+import { FLINSH_FEATURES, IS_FLINSH_BUILD } from '../flinsh/flinsh';
+import { restoreBrushSettings, saveBrushSettings } from '../flinsh/brush-settings-persistence';
 import { showError, showModal } from '../klecks/ui/modals/base/show-modal';
 import { runBrowserStorageBanner } from '../klecks/ui/components/browser-storage-banner';
 import { requestPersistentStorage } from '../klecks/storage/request-persistent-storage';
@@ -876,8 +878,10 @@ export class KlApp {
                 if (!this.embed) {
                     if (['ctrl+s', 'cmd+s'].includes(comboStr) && !isRepeat) {
                         event.preventDefault();
-                        applyUncommitted();
-                        this.saveToComputer.save();
+                        if (FLINSH_FEATURES.canDownload) {
+                            applyUncommitted();
+                            this.saveToComputer.save();
+                        }
                     }
                     if (['ctrl+shift+s', 'cmd+shift+s'].includes(comboStr) && !isRepeat) {
                         event.preventDefault();
@@ -1085,13 +1089,24 @@ export class KlApp {
         const brushUiMap: {
             [key: string]: any;
         } = {};
+        // Flinsh build: brush settings follow the user (persisted via LocalStorage -> flinsh.store)
+        let isRestoringBrushes = IS_FLINSH_BUILD;
+        const persistBrushSettings = () => {
+            if (IS_FLINSH_BUILD && !isRestoringBrushes) {
+                saveBrushSettings(brushUiMap, currentBrushId);
+            }
+        };
         // create brush UIs
         Object.entries(KL.BRUSHES_UI).forEach(([b, brushUi]) => {
             const ui = new (brushUi.Ui as any)({
                 klHistory: this.klHistory,
-                onSizeChange: sizeWatcher,
+                onSizeChange: (size: number) => {
+                    sizeWatcher(size);
+                    persistBrushSettings();
+                },
                 onOpacityChange: (opacity: number) => {
                     brushSettingService.emitOpacity(opacity);
+                    persistBrushSettings();
                 },
                 onConfigChange: () => {
                     brushSettingService.emitSliderConfig({
@@ -1105,6 +1120,9 @@ export class KlApp {
             // no bottom padding. spacer above bottom bar provides it
             ui.getElement().style.padding = '10px 10px 0';
         });
+        const storedBrushId: TBrushId | undefined = IS_FLINSH_BUILD
+            ? (restoreBrushSettings(brushUiMap) as TBrushId | undefined)
+            : undefined;
 
         this.toolspace = BB.el({
             className: 'kl-toolspace',
@@ -1286,7 +1304,9 @@ export class KlApp {
             this.toolspaceTopRow = new KL.ToolspaceTopRow({
                 logoImg: p.logoImg,
                 onLogo: () => {
-                    showIframeModal('./home/', !!this.embed);
+                    if (FLINSH_FEATURES.canShowIframePages) {
+                        showIframeModal('./home/', !!this.embed);
+                    }
                 },
                 onNew: () => {
                     showNewImageDialog();
@@ -1294,15 +1314,21 @@ export class KlApp {
                 onImport: () => {
                     fileUi!.triggerImport();
                 },
-                onSave: () => {
-                    this.saveToComputer.save();
-                },
-                onShare: () => {
-                    shareImage();
-                },
-                onHelp: () => {
-                    showIframeModal(this.helpPath, !!this.embed);
-                },
+                onSave: FLINSH_FEATURES.canDownload
+                    ? () => {
+                          this.saveToComputer.save();
+                      }
+                    : undefined,
+                onShare: FLINSH_FEATURES.canShare
+                    ? () => {
+                          shareImage();
+                      }
+                    : undefined,
+                onHelp: FLINSH_FEATURES.canShowIframePages
+                    ? () => {
+                          showIframeModal(this.helpPath, !!this.embed);
+                      }
+                    : undefined,
             });
         }
         this.toolspaceTopRow.getElement().style.marginBottom = '10px';
@@ -1418,6 +1444,7 @@ export class KlApp {
 
             currentBrushId = brushId;
             currentBrushUi = brushUiMap[brushId];
+            persistBrushSettings();
             currentBrushUi.setColor(currentColor);
             currentBrushUi.setLayer(this.klCanvas.getLayer(currentLayerIndex));
             updateBrushCursor();
@@ -1455,7 +1482,7 @@ export class KlApp {
         ]);
 
         const brushTabRow = new KL.TabRow({
-            initialId: 'penBrush',
+            initialId: storedBrushId ?? 'penBrush',
             useAccent: true,
             tabArr: (() => {
                 const commonStyle: TCss = {
@@ -1500,6 +1527,8 @@ export class KlApp {
                 return (Object.keys(KL.BRUSHES_UI) as TBrushId[]).map(createTab);
             })(),
         });
+        // initial brush is selected, from now on changes get persisted
+        isRestoringBrushes = false;
         BB.append(brushDiv, [
             brushTabRow.getElement(),
             ...Object.entries(KL.BRUSHES_UI).map(([b]) => brushUiMap[b].getElement()),

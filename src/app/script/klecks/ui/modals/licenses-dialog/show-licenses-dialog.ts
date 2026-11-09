@@ -4,6 +4,25 @@ import { DynamicModal } from '../base/dynamic-modal';
 import { BB } from '../../../../bb/bb';
 import { LANG } from '../../../../language/language';
 
+type TLicensesModule = typeof import('./licenses');
+type TFontLicensesModule = typeof import('../../../../../fonts/font-licenses');
+
+// Flinsh build: require() keeps everything in one bundle (no lazy chunks)
+async function loadLicenses(): Promise<TLicensesModule> {
+    if (process.env.KL_FLINSH === '1') {
+        return require('./licenses') as TLicensesModule;
+    } else {
+        return await import('./licenses');
+    }
+}
+async function loadFontLicenses(): Promise<TFontLicensesModule> {
+    if (process.env.KL_FLINSH === '1') {
+        return require('../../../../../fonts/font-licenses') as TFontLicensesModule;
+    } else {
+        return await import('../../../../../fonts/font-licenses');
+    }
+}
+
 export function showLicensesDialog() {
     const libraries = c('.' + classes.licenses, LANG('loading'));
     const fonts = c('.' + classes.licenses, LANG('loading'));
@@ -35,7 +54,7 @@ export function showLicensesDialog() {
         },
     });
 
-    import('./licenses').then((result) => {
+    loadLicenses().then((result) => {
         libraries.innerHTML = '';
         result.LICENSES.forEach((item) => {
             libraries.append(
@@ -44,7 +63,7 @@ export function showLicensesDialog() {
         });
     });
 
-    import('../../../../../fonts/font-licenses').then((result) => {
+    loadFontLicenses().then((result) => {
         fonts.innerHTML = '';
         result.FONT_LICENSES.forEach((item) => {
             fonts.append(
